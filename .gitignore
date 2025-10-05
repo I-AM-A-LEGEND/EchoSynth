@@ -124,6 +124,7 @@ env.bak/
 venv.bak/
 venv*/
 env*/
+# Virtual environments (local only)
 aria*/
 moon*/
 # Various audio files generated during development
