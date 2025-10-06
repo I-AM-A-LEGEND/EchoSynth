@@ -1,0 +1,532 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Voice Agent - STT + TTS</title>
+    <!-- Tailwind CSS for modern styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap');
+
+        body {
+            font-family: 'Inter', sans-serif;
+            transition: background-color 0.3s ease;
+        }
+
+        /* Pulsing animation for recording */
+        .record-pulse {
+            position: relative;
+        }
+        .record-pulse::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: rgba(34, 197, 94, 0.8);
+            border-radius: 9999px;
+            z-index: -1;
+            opacity: 0;
+            animation: pulse-ring 1.5s cubic-bezier(0.25, 0.1, 0.25, 1) infinite;
+        }
+        .record-pulse.is-recording::before {
+            animation: pulse-ring 1.5s cubic-bezier(0.25, 0.1, 0.25, 1) infinite;
+        }
+        @keyframes pulse-ring {
+            0% { transform: scale(0.33); opacity: 0.8; }
+            100% { transform: scale(1.5); opacity: 0; }
+        }
+
+        /* Message box animation */
+        .message-box { animation: slide-in 0.3s ease-out; }
+        @keyframes slide-in {
+            from { transform: translateY(20px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+
+        /* Audio waveform simulation */
+        .waveform {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 40px;
+            gap: 2px;
+        }
+        .wave-bar {
+            width: 3px;
+            background: #10b981;
+            border-radius: 2px;
+            animation: wave 1s ease-in-out infinite;
+            transition: height 0.1s ease;
+        }
+        .wave-bar:nth-child(odd) { animation-delay: 0.1s; }
+        .wave-bar:nth-child(even) { animation-delay: 0.2s; }
+        @keyframes wave {
+            0%, 100% { height: 4px; }
+            50% { height: 20px; }
+        }
+    </style>
+</head>
+<body class="bg-gray-100 dark:bg-gray-900 text-gray-800 dark:text-gray-200 min-h-screen py-8">
+
+    <div class="container mx-auto px-4 max-w-4xl">
+        <header class="text-center mb-8">
+            <h1 class="text-4xl font-bold text-gray-900 dark:text-white mb-2">🎙️ Voice Agent</h1>
+            <p class="text-lg text-gray-600 dark:text-gray-400">Speech-to-Text + Text-to-Speech with Custom Voices</p>
+        </header>
+
+        <!-- Backend Configuration -->
+        <div class="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg mb-8 border border-gray-200 dark:border-gray-700">
+            <h2 class="text-xl font-semibold mb-4 text-gray-900 dark:text-white">🔧 Backend Configuration</h2>
+            <div class="grid md:grid-cols-2 gap-4">
+                <div>
+                    <label for="backendUrl" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                        Backend URL
+                    </label>
+                    <input type="url" id="backendUrl" class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700 focus:ring-2 focus:ring-blue-500 focus:border-blue-500" placeholder="http://localhost:4113" value="http://localhost:4123">
+                    <p id="backendStatus" class="mt-1 text-sm"></p>
+                </div>
+                <div class="flex items-end">
+                    <button id="testBackendButton" class="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition-colors duration-200">
+                        Test Connection
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div class="grid md:grid-cols-2 gap-8">
+            <!-- STT Section -->
+            <div class="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
+                <h2 class="text-xl font-semibold mb-4 text-gray-900 dark:text-white">🎤 Speech-to-Text</h2>
+
+                <!-- STT Results Display -->
+                <div class="mb-6">
+                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                        Recognized Text
+                    </label>
+                    <div id="sttResultsContainer" class="min-h-[80px] p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700">
+                        <p class="text-gray-500 dark:text-gray-400">Click "Start Recording" to begin...</p>
+                    </div>
+                </div>
+
+                <!-- Recording Controls -->
+                <div class="space-y-4">
+                    <div class="flex justify-center gap-6">
+                        <button id="recordSTTButton" class="relative w-16 h-16 bg-green-500 hover:bg-green-600 text-white rounded-full shadow-lg focus:outline-none focus:ring-4 focus:ring-green-300 dark:focus:ring-green-800 transition-all duration-300 transform scale-100 active:scale-95 flex items-center justify-center">
+                            <svg class="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7v1a1 1 0 11-2 0v-1a7 7 0 01-7-7v-3a1 1 0 012 0v3a5 5 0 005 5v-1a1 1 0 112 0v1a5 5 0 005-5v-3a1 1 0 012 0v3z"/>
+                            </svg>
+                        </button>
+                        <button id="stopSTTButton" class="w-16 h-16 bg-red-500 hover:bg-red-600 text-white rounded-full shadow-lg focus:outline-none focus:ring-4 focus:ring-red-300 dark:focus:ring-red-800 transition-all duration-300 transform scale-100 active:scale-95 flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+                            <svg class="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 8v8a8 8 0 01-16 0v-8a8 8 0 0116 0z"/>
+                            </svg>
+                        </button>
+                    </div>
+                    <div class="flex items-center justify-center">
+                        <div id="sttWaveform" class="waveform hidden">
+                            <div class="wave-bar"></div>
+                            <div class="wave-bar"></div>
+                            <div class="wave-bar"></div>
+                            <div class="wave-bar"></div>
+                            <div class="wave-bar"></div>
+                        </div>
+                    </div>
+                    <div id="sttStatus" class="text-center text-sm text-gray-600 dark:text-gray-400">Ready</div>
+                </div>
+            </div>
+
+            <!-- TTS Section -->
+            <div class="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
+                <h2 class="text-xl font-semibold mb-4 text-gray-900 dark:text-white">🔊 Text-to-Speech</h2>
+
+                <!-- Text Input -->
+                <div class="mb-4">
+                    <label for="ttsText" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                        Text to Speak
+                    </label>
+                    <textarea id="ttsText" class="w-full h-24 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none" placeholder="Enter text to convert to speech..."></textarea>
+                </div>
+
+                <!-- Voice Selection/Upload -->
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                        Voice Selection
+                    </label>
+                    <div class="space-y-2">
+                        <select id="voiceSelect" class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700 focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                            <option value="">Select predefined voice...</option>
+                            <option value="alloy">alloy - Default voice</option>
+                            <option value="echo">echo - Soft and melodic</option>
+                            <option value="fable">fable - Warm and expressive</option>
+                            <option value="onyx">onyx - Deep and resonant</option>
+                            <option value="nova">nova - Bright and energetic</option>
+                            <option value="shimmer">shimmer - Light and airy</option>
+                        </select>
+                        <p class="text-xs text-gray-500 dark:text-gray-400">or</p>
+                        <input type="file" id="voiceFile" accept="audio/wav,audio/flac,audio/m4a,audio/mp3,audio/ogg" class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100" />
+                        <p class="text-xs text-gray-500 dark:text-gray-400">Upload custom voice sample (overrides selected voice)</p>
+                    </div>
+                </div>
+
+                <!-- TTS Controls -->
+                <div class="space-y-4">
+                    <div class="flex justify-center gap-4">
+                        <button id="generateTTSButton" class="px-6 py-2 bg-purple-500 hover:bg-purple-600 text-white rounded-lg transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed">
+                            🎵 Generate Speech
+                        </button>
+                        <button id="playTTSButton" class="px-6 py-2 bg-green-500 hover:bg-green-600 text-white rounded-lg transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+                            ▶️ Play Audio
+                        </button>
+                        <button id="downloadTTSButton" class="px-6 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded-lg transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+                            📥 Download
+                        </button>
+                    </div>
+                    <div id="ttsStatus" class="text-center text-sm text-gray-600 dark:text-gray-400">Ready</div>
+                </div>
+
+                <!-- Audio Player (hidden) -->
+                <audio id="ttsAudioPlayer" class="hidden"></audio>
+            </div>
+        </div>
+
+        <!-- Quick Actions -->
+        <div class="mt-8 bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
+            <h2 class="text-xl font-semibold mb-4 text-gray-900 dark:text-white">⚡ Quick Actions</h2>
+            <div class="grid md:grid-cols-3 gap-4">
+                <button id="voiceAgentFlowButton" class="p-4 bg-green-500 hover:bg-green-600 text-white rounded-lg transition-colors duration-200 text-center">
+                    🎯 Complete Voice Agent Flow<br>
+                    <small class="opacity-75">Record → Transcribe → Generate Speech</small>
+                </button>
+                <button id="copySTTResultButton" class="p-4 bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition-colors duration-200 text-center disabled:opacity-50 disabled:cursor-not-allowed">
+                    📋 Copy STT Result
+                </button>
+                <button id="clearAllButton" class="p-4 bg-red-500 hover:bg-red-600 text-white rounded-lg transition-colors duration-200 text-center">
+                    🗑️ Clear All
+                </button>
+            </div>
+        </div>
+
+        <!-- Message Box -->
+        <div id="messageBox" class="hidden mt-4 p-4 rounded-lg text-sm transition-opacity duration-300 message-box" role="alert">
+            <span id="messageText"></span>
+        </div>
+    </div>
+
+    <script>
+        // DOM elements
+        const backendUrlInput = document.getElementById('backendUrl');
+        const testBackendButton = document.getElementById('testBackendButton');
+        const backendStatus = document.getElementById('backendStatus');
+
+        const recordSTTButton = document.getElementById('recordSTTButton');
+        const stopSTTButton = document.getElementById('stopSTTButton');
+        const sttResultsContainer = document.getElementById('sttResultsContainer');
+        const sttStatus = document.getElementById('sttStatus');
+        const sttWaveform = document.getElementById('sttWaveform');
+
+        const ttsText = document.getElementById('ttsText');
+        const voiceSelect = document.getElementById('voiceSelect');
+        const voiceFile = document.getElementById('voiceFile');
+        const generateTTSButton = document.getElementById('generateTTSButton');
+        const playTTSButton = document.getElementById('playTTSButton');
+        const downloadTTSButton = document.getElementById('downloadTTSButton');
+        const ttsStatus = document.getElementById('ttsStatus');
+        const ttsAudioPlayer = document.getElementById('ttsAudioPlayer');
+
+        const voiceAgentFlowButton = document.getElementById('voiceAgentFlowButton');
+        const copySTTResultButton = document.getElementById('copySTTResultButton');
+        const clearAllButton = document.getElementById('clearAllButton');
+        const messageBox = document.getElementById('messageBox');
+        const messageText = document.getElementById('messageText');
+
+        // Global variables
+        let mediaRecorder;
+        let audioChunks = [];
+        let mediaStream = null;
+        let generatedAudioUrl = null;
+        let isBackendConnected = false;
+
+        // Utility functions
+        function showMessage(message, type = 'info') {
+            messageText.textContent = message;
+            messageBox.className = 'mt-4 p-4 rounded-lg text-sm transition-opacity duration-300 message-box';
+            messageBox.classList.remove('hidden', 'bg-green-100', 'text-green-800', 'bg-red-100', 'text-red-800', 'bg-blue-100', 'text-blue-800');
+
+            if (type === 'success') {
+                messageBox.classList.add('bg-green-100', 'text-green-800', 'block');
+            } else if (type === 'error') {
+                messageBox.classList.add('bg-red-100', 'text-red-800', 'block');
+            } else {
+                messageBox.classList.add('bg-blue-100', 'text-blue-800', 'block');
+            }
+
+            setTimeout(() => hideMessage(), 5000);
+        }
+
+        function hideMessage() {
+            messageBox.classList.add('hidden');
+        }
+
+        async function testBackendConnection() {
+            const backendUrl = backendUrlInput.value.trim();
+            if (!backendUrl) {
+                backendStatus.textContent = "Please enter a backend URL";
+                backendStatus.style.color = "red";
+                return;
+            }
+
+            try {
+                const response = await fetch(`${backendUrl}/health`, { timeout: 3000 });
+                if (response.ok) {
+                    const data = await response.json();
+                    backendStatus.textContent = `✅ Connected - TTS: ${data.model_loaded ? 'Ready' : 'Loading'} | STT: Ready`;
+                    backendStatus.style.color = "green";
+                    isBackendConnected = true;
+                } else {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+            } catch (error) {
+                backendStatus.textContent = `❌ Connection failed: ${error.message}`;
+                backendStatus.style.color = "red";
+                isBackendConnected = false;
+            }
+        }
+
+        // STT Functions
+        async function startSTT() {
+            if (!isBackendConnected) {
+                showMessage('Please test backend connection first', 'error');
+                return;
+            }
+
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                mediaRecorder = new MediaRecorder(stream);
+                mediaRecorder.start();
+
+                mediaStream = stream;
+                audioChunks = [];
+
+                mediaRecorder.addEventListener('dataavailable', event => {
+                    audioChunks.push(event.data);
+                });
+
+                sttStatus.textContent = '🎤 Recording...';
+                recordSTTButton.classList.add('record-pulse', 'is-recording');
+                recordSTTButton.disabled = true;
+                stopSTTButton.disabled = false;
+                sttWaveform.classList.remove('hidden');
+
+                sttResultsContainer.innerHTML = '<p class="text-gray-500 dark:text-gray-400">Recording in progress...</p>';
+            } catch (err) {
+                console.error('Error accessing microphone:', err);
+                showMessage('Error: Could not access microphone', 'error');
+            }
+        }
+
+        async function stopSTT() {
+            if (mediaRecorder && mediaRecorder.state === 'recording') {
+                mediaRecorder.stop();
+
+                sttStatus.textContent = '⏳ Processing...';
+                recordSTTButton.disabled = true;
+                stopSTTButton.disabled = true;
+                sttWaveform.classList.add('hidden');
+
+                mediaRecorder.addEventListener('stop', async () => {
+                    const audioBlob = new Blob(audioChunks, { type: 'audio/wav' });
+                    const audioFile = new File([audioBlob], "recording.wav", { type: 'audio/wav' });
+
+                    try {
+                        sttResultsContainer.innerHTML = '<p class="text-gray-500 dark:text-gray-400">Sending to STT service...</p>';
+
+                        const formData = new FormData();
+                        formData.append('audio', audioFile);
+
+                        const response = await fetch(`${backendUrlInput.value.trim()}/stt`, {
+                            method: 'POST',
+                            body: formData
+                        });
+
+                        if (response.ok) {
+                            const data = await response.json();
+                            sttResultsContainer.innerHTML = `<p class="text-gray-900 dark:text-white">"${data.text}"</p>`;
+                            showMessage('STT transcription complete!', 'success');
+                        } else {
+                            const errorData = await response.json();
+                            sttResultsContainer.innerHTML = '<p class="text-red-600 dark:text-red-400">Transcription failed</p>';
+                            showMessage(`STT Error: ${errorData.detail?.message || 'Unknown error'}`, 'error');
+                        }
+                    } catch (error) {
+                        sttResultsContainer.innerHTML = '<p class="text-red-600 dark:text-red-400">Network error</p>';
+                        showMessage(`STT Error: ${error.message}`, 'error');
+                    } finally {
+                        // Clean up
+                        if (mediaStream) {
+                            mediaStream.getTracks().forEach(track => track.stop());
+                            mediaStream = null;
+                        }
+                        recordSTTButton.classList.remove('record-pulse', 'is-recording');
+                        recordSTTButton.disabled = false;
+                        stopSTTButton.disabled = true;
+                        sttStatus.textContent = 'Ready';
+                    }
+                });
+            }
+        }
+
+        // TTS Functions
+        async function generateTTS() {
+            const text = ttsText.value.trim();
+            if (!text) {
+                showMessage('Please enter text to speak', 'error');
+                return;
+            }
+
+            if (!isBackendConnected) {
+                showMessage('Please test backend connection first', 'error');
+                return;
+            }
+
+            try {
+                ttsStatus.textContent = '⏳ Generating speech...';
+                generateTTSButton.disabled = true;
+
+                const formData = new FormData();
+                formData.append('input', text);
+                formData.append('voice', voiceSelect.value || 'alloy');
+
+                // Add voice file if provided
+                if (voiceFile.files && voiceFile.files[0]) {
+                    formData.append('voice_file', voiceFile.files[0]);
+                }
+
+                const response = await fetch(`${backendUrlInput.value.trim()}/v1/audio/speech/upload`, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (response.ok) {
+                    const audioBlob = await response.blob();
+                    generatedAudioUrl = URL.createObjectURL(audioBlob);
+                    ttsAudioPlayer.src = generatedAudioUrl;
+
+                    playTTSButton.disabled = false;
+                    downloadTTSButton.disabled = false;
+                    ttsStatus.textContent = '✅ Speech generated';
+                    showMessage('TTS generation complete!', 'success');
+                } else {
+                    const errorData = await response.json();
+                    ttsStatus.textContent = '❌ Generation failed';
+                    showMessage(`TTS Error: ${errorData.detail?.message || 'Unknown error'}`, 'error');
+                }
+            } catch (error) {
+                ttsStatus.textContent = '❌ Generation failed';
+                showMessage(`TTS Error: ${error.message}`, 'error');
+            } finally {
+                generateTTSButton.disabled = false;
+            }
+        }
+
+        function playTTS() {
+            if (generatedAudioUrl) {
+                ttsAudioPlayer.play();
+                ttsStatus.textContent = '🔊 Playing...';
+                ttsAudioPlayer.onended = () => {
+                    ttsStatus.textContent = 'Ready';
+                };
+            }
+        }
+
+        function downloadTTS() {
+            if (generatedAudioUrl) {
+                const a = document.createElement('a');
+                a.href = generatedAudioUrl;
+                a.download = 'generated_speech.wav';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                showMessage('Download started!', 'success');
+            }
+        }
+
+        async function runVoiceAgentFlow() {
+            // First, record and transcribe
+            await startSTT();
+
+            // Wait a moment, then stop
+            setTimeout(async () => {
+                await stopSTT();
+
+                // After STT is complete, wait a moment and then use the text for TTS
+                setTimeout(() => {
+                    const transcribedText = sttResultsContainer.textContent.replace(/^"(.*)"$/, '$1');
+                    if (transcribedText !== 'Transcription failed' && transcribedText !== 'Recording in progress...' && transcribedText !== 'Sending to STT service...') {
+                        ttsText.value = transcribedText;
+                        setTimeout(() => {
+                            generateTTS();
+                        }, 500);
+                    }
+                }, 2000);
+            }, 3000);
+        }
+
+        function copySTTResult() {
+            const text = sttResultsContainer.textContent.replace(/^"(.*)"$/, '$1');
+            if (text !== 'Transcription failed' && text !== 'Recording in progress...' && text.length > 0) {
+                navigator.clipboard.writeText(text).then(() => {
+                    showMessage('STT result copied to clipboard!', 'success');
+                }).catch(err => {
+                    showMessage('Failed to copy: ' + err, 'error');
+                });
+            } else {
+                showMessage('No valid STT result to copy', 'error');
+            }
+        }
+
+        function clearAll() {
+            sttResultsContainer.innerHTML = '<p class="text-gray-500 dark:text-gray-400">Click "Start Recording" to begin...</p>';
+            ttsText.value = '';
+            voiceSelect.selectedIndex = 0;
+            voiceFile.value = '';
+
+            if (generatedAudioUrl) {
+                URL.revokeObjectURL(generatedAudioUrl);
+                generatedAudioUrl = null;
+                ttsAudioPlayer.src = '';
+                playTTSButton.disabled = true;
+                downloadTTSButton.disabled = true;
+            }
+
+            copySTTResultButton.disabled = false;
+            ttsStatus.textContent = 'Ready';
+            sttStatus.textContent = 'Ready';
+            showMessage('All cleared!', 'success');
+        }
+
+        // Event listeners
+        testBackendButton.addEventListener('click', testBackendConnection);
+        recordSTTButton.addEventListener('click', startSTT);
+        stopSTTButton.addEventListener('click', stopSTT);
+        generateTTSButton.addEventListener('click', generateTTS);
+        playTTSButton.addEventListener('click', playTTS);
+        downloadTTSButton.addEventListener('click', downloadTTS);
+        voiceAgentFlowButton.addEventListener('click', runVoiceAgentFlow);
+        copySTTResultButton.addEventListener('click', copySTTResult);
+        clearAllButton.addEventListener('click', clearAll);
+
+        // Auto-test backend on page load
+        setTimeout(testBackendConnection, 1000);
+
+        // Enable copy button when there's STT result
+        setInterval(() => {
+            const text = sttResultsContainer.textContent.replace(/^"(.*)"$/, '$1');
+            copySTTResultButton.disabled = (text === 'Transcription failed' || text === 'Recording in progress...' || text === 'Network error' || text.length === 0);
+        }, 500);
+    </script>
+
+</body>
+</html>
